@@ -67,6 +67,8 @@ public class WeatherStationActivity extends Activity {
     private static final float BAROMETER_RANGE_SUNNY = 1010.f;
     private static final float BAROMETER_RANGE_RAINY = 990.f;
 
+    private static final int INTERVAL_BETWEEN_DISPLAY_UPDATE_MS = 2000;
+
     private Gpio mLed;
 
     private int SPEAKER_READY_DELAY_MS = 300;
@@ -77,6 +79,8 @@ public class WeatherStationActivity extends Activity {
 
     private PubsubPublisher mPubsubPublisher;
     private ImageView mImageView;
+
+    private Handler mHandler = new Handler();
 
     // Callback used when we register the BMP280 sensor driver with the system's SensorManager.
     private SensorManager.DynamicSensorCallback mDynamicSensorCallback
@@ -113,10 +117,10 @@ public class WeatherStationActivity extends Activity {
         @Override
         public void onSensorChanged(SensorEvent event) {
             mLastTemperature = event.values[0];
-            Log.d(TAG, "sensor changed: " + mLastTemperature);
-            if (mDisplayMode == DisplayMode.TEMPERATURE) {
-                updateDisplay(mLastTemperature);
-            }
+            Log.d(TAG, "Temperature changed: " + mLastTemperature);
+            //if (mDisplayMode == DisplayMode.TEMPERATURE) {
+                //updateDisplay(mLastTemperature);
+            //}
         }
 
         @Override
@@ -130,7 +134,7 @@ public class WeatherStationActivity extends Activity {
         @Override
         public void onSensorChanged(SensorEvent event) {
             mLastPressure = event.values[0];
-            Log.d(TAG, "sensor changed: " + mLastPressure);
+            Log.d(TAG, "Pressure changed: " + mLastPressure);
             if (mDisplayMode == DisplayMode.PRESSURE) {
                 updateDisplay(mLastPressure);
             }
@@ -264,6 +268,8 @@ public class WeatherStationActivity extends Activity {
                 Log.e(TAG, "error creating pubsub publisher", e);
             }
         }
+
+        mHandler.post(DelayedUpdateDisplay);
     }
 
     @Override
@@ -372,11 +378,22 @@ public class WeatherStationActivity extends Activity {
         if (mDisplay != null) {
             try {
                 mDisplay.display(value);
+                Log.d(TAG, "Display updated");
             } catch (IOException e) {
                 Log.e(TAG, "Error setting display", e);
             }
         }
     }
+
+    private Runnable DelayedUpdateDisplay = new Runnable(){
+        @Override
+        public void run(){
+            updateDisplay(mLastTemperature);
+            Log.d(TAG, "Display updated DUD");
+                    mHandler.postDelayed(DelayedUpdateDisplay,INTERVAL_BETWEEN_DISPLAY_UPDATE_MS);
+        }
+
+    };
 
     private void updateBarometer(float pressure) {
         // Update UI.

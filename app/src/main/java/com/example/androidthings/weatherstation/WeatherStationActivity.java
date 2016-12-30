@@ -119,7 +119,7 @@ public class WeatherStationActivity extends Activity {
             mLastTemperature = event.values[0];
             Log.d(TAG, "Temperature changed: " + mLastTemperature);
             //if (mDisplayMode == DisplayMode.TEMPERATURE) {
-                //updateDisplay(mLastTemperature);
+            //updateDisplay(mLastTemperature);
             //}
         }
 
@@ -135,10 +135,10 @@ public class WeatherStationActivity extends Activity {
         public void onSensorChanged(SensorEvent event) {
             mLastPressure = event.values[0];
             Log.d(TAG, "Pressure changed: " + mLastPressure);
-            if (mDisplayMode == DisplayMode.PRESSURE) {
-                updateDisplay(mLastPressure);
-            }
-            updateBarometer(mLastPressure);
+            // if (mDisplayMode == DisplayMode.PRESSURE) {
+            //    updateDisplay(mLastPressure);
+            // }
+            // updateBarometer(mLastPressure);
         }
 
         @Override
@@ -307,6 +307,9 @@ public class WeatherStationActivity extends Activity {
     protected void onDestroy() {
         super.onDestroy();
 
+        // Clean up CallBack
+        mHandler.removeCallbacks(DelayedUpdateDisplay);
+
         // Clean up sensor registrations
         mSensorManager.unregisterListener(mTemperatureListener);
         mSensorManager.unregisterListener(mPressureListener);
@@ -378,19 +381,23 @@ public class WeatherStationActivity extends Activity {
         if (mDisplay != null) {
             try {
                 mDisplay.display(value);
-                Log.d(TAG, "Display updated");
             } catch (IOException e) {
                 Log.e(TAG, "Error setting display", e);
             }
         }
     }
 
-    private Runnable DelayedUpdateDisplay = new Runnable(){
+    private Runnable DelayedUpdateDisplay = new Runnable() {
         @Override
-        public void run(){
-            updateDisplay(mLastTemperature);
+        public void run() {
+            if (mDisplayMode == DisplayMode.PRESSURE) {
+                updateDisplay(mLastPressure);
+                updateBarometer(mLastPressure);
+            } else {
+                updateDisplay(mLastTemperature);
+            }
             Log.d(TAG, "Display updated DUD");
-                    mHandler.postDelayed(DelayedUpdateDisplay,INTERVAL_BETWEEN_DISPLAY_UPDATE_MS);
+            mHandler.postDelayed(DelayedUpdateDisplay, INTERVAL_BETWEEN_DISPLAY_UPDATE_MS);
         }
 
     };

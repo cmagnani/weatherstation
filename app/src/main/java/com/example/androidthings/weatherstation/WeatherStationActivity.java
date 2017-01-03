@@ -268,7 +268,6 @@ public class WeatherStationActivity extends Activity {
                 Log.e(TAG, "error creating pubsub publisher", e);
             }
         }
-
         mHandler.post(DelayedUpdateDisplay);
     }
 
@@ -390,9 +389,9 @@ public class WeatherStationActivity extends Activity {
     private Runnable DelayedUpdateDisplay = new Runnable() {
         @Override
         public void run() {
+            updateBarometer(mLastPressure);
             if (mDisplayMode == DisplayMode.PRESSURE) {
                 updateDisplay(mLastPressure);
-                updateBarometer(mLastPressure);
             } else {
                 updateDisplay(mLastTemperature);
             }

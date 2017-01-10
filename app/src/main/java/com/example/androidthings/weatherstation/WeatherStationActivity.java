@@ -32,6 +32,10 @@ import android.view.KeyEvent;
 import android.view.animation.LinearInterpolator;
 import android.widget.ImageView;
 
+import java.util.Calendar;
+import java.util.Date;
+import java.util.GregorianCalendar;
+
 import com.google.android.things.contrib.driver.apa102.Apa102;
 import com.google.android.things.contrib.driver.bmx280.Bmx280SensorDriver;
 import com.google.android.things.contrib.driver.button.Button;
@@ -46,42 +50,63 @@ import java.io.IOException;
 public class WeatherStationActivity extends Activity {
 
     private static final String TAG = WeatherStationActivity.class.getSimpleName();
-
-    private enum DisplayMode {
-        TEMPERATURE,
-        PRESSURE
-    }
-
-    private SensorManager mSensorManager;
-
-    private ButtonInputDriver mButtonInputDriver;
-    private Bmx280SensorDriver mEnvironmentalSensorDriver;
-    private AlphanumericDisplay mDisplay;
-    private DisplayMode mDisplayMode = DisplayMode.TEMPERATURE;
-
-    private Apa102 mLedstrip;
-    private int[] mRainbow = new int[7];
     private static final int LEDSTRIP_BRIGHTNESS = 1;
     private static final float BAROMETER_RANGE_LOW = 965.f;
     private static final float BAROMETER_RANGE_HIGH = 1035.f;
     private static final float BAROMETER_RANGE_SUNNY = 1010.f;
     private static final float BAROMETER_RANGE_RAINY = 990.f;
-
     private static final int INTERVAL_BETWEEN_DISPLAY_UPDATE_MS = 2000;
-
-    private Gpio mLed;
-
+    private SensorManager mSensorManager;
+    private ButtonInputDriver mButtonAInputDriver, mButtonBInputDriver;
+    private Bmx280SensorDriver mEnvironmentalSensorDriver;
+    private AlphanumericDisplay mDisplay;
+    private DisplayMode mDisplayMode = DisplayMode.TEMPERATURE;
+    private Apa102 mLedstrip;
+    private int[] mRainbow = new int[7];
+    private Gpio mLedA, mLedB;
     private int SPEAKER_READY_DELAY_MS = 300;
     private Speaker mSpeaker;
-
     private float mLastTemperature;
     private float mLastPressure;
-
     private PubsubPublisher mPubsubPublisher;
     private ImageView mImageView;
-
     private Handler mHandler = new Handler();
+    private Calendar calendar = new GregorianCalendar();
+    private Date trialTime = new Date();
+    private String mLastTime;
 
+    private enum DisplayMode {
+        TEMPERATURE,
+        PRESSURE,
+        HOUR
+    }
+
+    // Callback when SensorManager delivers temperature data.
+    private SensorEventListener mTemperatureListener = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent event) {
+            mLastTemperature = event.values[0];
+            Log.d(TAG, "Temperature changed: " + mLastTemperature);
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+            Log.d(TAG, "accuracy changed: " + accuracy);
+        }
+    };
+    // Callback when SensorManager delivers pressure data.
+    private SensorEventListener mPressureListener = new SensorEventListener() {
+        @Override
+        public void onSensorChanged(SensorEvent event) {
+            mLastPressure = event.values[0];
+            Log.d(TAG, "Pressure changed: " + mLastPressure);
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+            Log.d(TAG, "accuracy changed: " + accuracy);
+        }
+    };
     // Callback used when we register the BMP280 sensor driver with the system's SensorManager.
     private SensorManager.DynamicSensorCallback mDynamicSensorCallback
             = new SensorManager.DynamicSensorCallback() {
@@ -111,39 +136,23 @@ public class WeatherStationActivity extends Activity {
             super.onDynamicSensorDisconnected(sensor);
         }
     };
-
-    // Callback when SensorManager delivers temperature data.
-    private SensorEventListener mTemperatureListener = new SensorEventListener() {
+    private Runnable DelayedUpdateDisplay = new Runnable() {
         @Override
-        public void onSensorChanged(SensorEvent event) {
-            mLastTemperature = event.values[0];
-            Log.d(TAG, "Temperature changed: " + mLastTemperature);
-            //if (mDisplayMode == DisplayMode.TEMPERATURE) {
-            //updateDisplay(mLastTemperature);
-            //}
-        }
-
-        @Override
-        public void onAccuracyChanged(Sensor sensor, int accuracy) {
-            Log.d(TAG, "accuracy changed: " + accuracy);
-        }
-    };
-
-    // Callback when SensorManager delivers pressure data.
-    private SensorEventListener mPressureListener = new SensorEventListener() {
-        @Override
-        public void onSensorChanged(SensorEvent event) {
-            mLastPressure = event.values[0];
-            Log.d(TAG, "Pressure changed: " + mLastPressure);
-            // if (mDisplayMode == DisplayMode.PRESSURE) {
-            //    updateDisplay(mLastPressure);
-            // }
-            // updateBarometer(mLastPressure);
-        }
-
-        @Override
-        public void onAccuracyChanged(Sensor sensor, int accuracy) {
-            Log.d(TAG, "accuracy changed: " + accuracy);
+        public void run() {
+            updateBarometer(mLastPressure);
+            switch (mDisplayMode) {
+                case TEMPERATURE:
+                    updateDisplay(mLastTemperature);
+                    break;
+                case PRESSURE:
+                    updateDisplay(mLastPressure);
+                    break;
+                case HOUR:
+                    updateDisplay(mLastTime);
+                    break;
+            }
+            Log.d(TAG, "Display updated DUD");
+            mHandler.postDelayed(DelayedUpdateDisplay, INTERVAL_BETWEEN_DISPLAY_UPDATE_MS);
         }
     };
 
@@ -159,10 +168,20 @@ public class WeatherStationActivity extends Activity {
 
         // GPIO button that generates 'A' keypresses (handled by onKeyUp method)
         try {
-            mButtonInputDriver = new ButtonInputDriver(BoardDefaults.getButtonGpioPin(),
+            mButtonAInputDriver = new ButtonInputDriver(BoardDefaults.getButtonAGpioPin(),
                     Button.LogicState.PRESSED_WHEN_LOW, KeyEvent.KEYCODE_A);
-            mButtonInputDriver.register();
+            mButtonAInputDriver.register();
             Log.d(TAG, "Initialized GPIO Button that generates a keypress with KEYCODE_A");
+        } catch (IOException e) {
+            throw new RuntimeException("Error initializing GPIO button", e);
+        }
+
+        // GPIO button that generates 'B' keypresses (handled by onKeyUp method)
+        try {
+            mButtonBInputDriver = new ButtonInputDriver(BoardDefaults.getButtonBGpioPin(),
+                    Button.LogicState.PRESSED_WHEN_LOW, KeyEvent.KEYCODE_B);
+            mButtonBInputDriver.register();
+            Log.d(TAG, "Initialized GPIO Button that generates a keypress with KEYCODE_B");
         } catch (IOException e) {
             throw new RuntimeException("Error initializing GPIO button", e);
         }
@@ -207,15 +226,26 @@ public class WeatherStationActivity extends Activity {
             mLedstrip = null; // Led strip is optional.
         }
 
-        // GPIO led
+        // GPIO led A
         try {
             PeripheralManagerService pioService = new PeripheralManagerService();
-            mLed = pioService.openGpio(BoardDefaults.getLedGpioPin());
-            mLed.setEdgeTriggerType(Gpio.EDGE_NONE);
-            mLed.setDirection(Gpio.DIRECTION_OUT_INITIALLY_LOW);
-            mLed.setActiveType(Gpio.ACTIVE_HIGH);
+            mLedA = pioService.openGpio(BoardDefaults.getLedAGpioPin());
+            mLedA.setEdgeTriggerType(Gpio.EDGE_NONE);
+            mLedA.setDirection(Gpio.DIRECTION_OUT_INITIALLY_LOW);
+            mLedA.setActiveType(Gpio.ACTIVE_HIGH);
         } catch (IOException e) {
-            throw new RuntimeException("Error initializing led", e);
+            throw new RuntimeException("Error initializing led A", e);
+        }
+
+        // GPIO led B
+        try {
+            PeripheralManagerService pioService = new PeripheralManagerService();
+            mLedB = pioService.openGpio(BoardDefaults.getLedBGpioPin());
+            mLedB.setEdgeTriggerType(Gpio.EDGE_NONE);
+            mLedB.setDirection(Gpio.DIRECTION_OUT_INITIALLY_LOW);
+            mLedB.setActiveType(Gpio.ACTIVE_HIGH);
+        } catch (IOException e) {
+            throw new RuntimeException("Error initializing led B", e);
         }
 
         // PWM speaker
@@ -273,34 +303,65 @@ public class WeatherStationActivity extends Activity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_A) {
-            mDisplayMode = DisplayMode.PRESSURE;
-            updateDisplay(mLastPressure);
-            try {
-                mLed.setValue(true);
-            } catch (IOException e) {
-                Log.e(TAG, "error updating LED", e);
-            }
-            return true;
+
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_A:
+                mDisplayMode = DisplayMode.PRESSURE;
+                updateDisplay(mLastPressure);
+                try {
+                    mLedA.setValue(true);
+                } catch (IOException e) {
+                    Log.e(TAG, "error updating LED A", e);
+                }
+                break;
+
+            case KeyEvent.KEYCODE_B:
+                mDisplayMode = DisplayMode.HOUR;
+                calendar.setTime(trialTime);
+                mLastTime = String.valueOf(calendar.get(Calendar.HOUR_OF_DAY)) + String.valueOf(calendar.get(Calendar.MINUTE));
+                updateDisplay(mLastTime);
+                try {
+                    mLedB.setValue(true);
+                } catch (IOException e) {
+                    Log.e(TAG, "error updating LED B", e);
+                }
+                break;
+
+            default:
+                return super.onKeyUp(keyCode, event);
         }
-        return super.onKeyUp(keyCode, event);
+        return true;
     }
 
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
-        if (keyCode == KeyEvent.KEYCODE_A) {
-            mDisplayMode = DisplayMode.TEMPERATURE;
-            updateDisplay(mLastTemperature);
-            try {
-                mLed.setValue(false);
-            } catch (IOException e) {
-                Log.e(TAG, "error updating LED", e);
-            }
-            return true;
-        }
-        return super.onKeyUp(keyCode, event);
-    }
 
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_A:
+                mDisplayMode = DisplayMode.TEMPERATURE;
+                updateDisplay(mLastTemperature);
+                try {
+                    mLedA.setValue(false);
+                } catch (IOException e) {
+                    Log.e(TAG, "error updating LED A", e);
+                }
+                break;
+
+            case KeyEvent.KEYCODE_B:
+                mDisplayMode = DisplayMode.TEMPERATURE;
+                updateDisplay(mLastTemperature);
+                try {
+                    mLedB.setValue(false);
+                } catch (IOException e) {
+                    Log.e(TAG, "error updating LED B", e);
+                }
+                break;
+
+            default:
+                return super.onKeyUp(keyCode, event);
+        }
+        return true;
+    }
 
     @Override
     protected void onDestroy() {
@@ -323,13 +384,21 @@ public class WeatherStationActivity extends Activity {
             }
             mEnvironmentalSensorDriver = null;
         }
-        if (mButtonInputDriver != null) {
+        if (mButtonAInputDriver != null) {
             try {
-                mButtonInputDriver.close();
+                mButtonAInputDriver.close();
             } catch (IOException e) {
                 e.printStackTrace();
             }
-            mButtonInputDriver = null;
+            mButtonAInputDriver = null;
+        }
+        if (mButtonBInputDriver != null) {
+            try {
+                mButtonBInputDriver.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            mButtonBInputDriver = null;
         }
 
         if (mDisplay != null) {
@@ -356,14 +425,25 @@ public class WeatherStationActivity extends Activity {
             }
         }
 
-        if (mLed != null) {
+        if (mLedA != null) {
             try {
-                mLed.setValue(false);
-                mLed.close();
+                mLedA.setValue(false);
+                mLedA.close();
             } catch (IOException e) {
                 Log.e(TAG, "Error disabling led", e);
             } finally {
-                mLed = null;
+                mLedA = null;
+            }
+        }
+
+        if (mLedB != null) {
+            try {
+                mLedB.setValue(false);
+                mLedB.close();
+            } catch (IOException e) {
+                Log.e(TAG, "Error disabling led B", e);
+            } finally {
+                mLedB = null;
             }
         }
 
@@ -381,25 +461,20 @@ public class WeatherStationActivity extends Activity {
             try {
                 mDisplay.display(value);
             } catch (IOException e) {
-                Log.e(TAG, "Error setting display", e);
+                Log.e(TAG, "Error setting display float", e);
             }
         }
     }
 
-    private Runnable DelayedUpdateDisplay = new Runnable() {
-        @Override
-        public void run() {
-            updateBarometer(mLastPressure);
-            if (mDisplayMode == DisplayMode.PRESSURE) {
-                updateDisplay(mLastPressure);
-            } else {
-                updateDisplay(mLastTemperature);
+    private void updateDisplay(String value) {
+        if (mDisplay != null) {
+            try {
+                mDisplay.display(value);
+            } catch (IOException e) {
+                Log.e(TAG, "Error setting display String", e);
             }
-            Log.d(TAG, "Display updated DUD");
-            mHandler.postDelayed(DelayedUpdateDisplay, INTERVAL_BETWEEN_DISPLAY_UPDATE_MS);
         }
-
-    };
+    }
 
     private void updateBarometer(float pressure) {
         // Update UI.

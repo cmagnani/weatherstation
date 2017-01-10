@@ -71,7 +71,7 @@ public class WeatherStationActivity extends Activity {
     private PubsubPublisher mPubsubPublisher;
     private ImageView mImageView;
     private Handler mHandler = new Handler();
-    private Calendar calendar = new GregorianCalendar();
+    private Calendar calendar = Calendar.getInstance();
     private Date trialTime = new Date();
     private String mLastTime;
 
@@ -148,6 +148,9 @@ public class WeatherStationActivity extends Activity {
                     updateDisplay(mLastPressure);
                     break;
                 case HOUR:
+                    calendar = Calendar.getInstance();
+                    calendar.getTime();
+                    mLastTime = String.valueOf(calendar.get(Calendar.HOUR_OF_DAY)) + String.valueOf(calendar.get(Calendar.MINUTE));
                     updateDisplay(mLastTime);
                     break;
             }
@@ -317,7 +320,8 @@ public class WeatherStationActivity extends Activity {
 
             case KeyEvent.KEYCODE_B:
                 mDisplayMode = DisplayMode.HOUR;
-                calendar.setTime(trialTime);
+                calendar = Calendar.getInstance();
+                calendar.getTime();
                 mLastTime = String.valueOf(calendar.get(Calendar.HOUR_OF_DAY)) + String.valueOf(calendar.get(Calendar.MINUTE));
                 updateDisplay(mLastTime);
                 try {

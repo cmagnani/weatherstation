@@ -171,7 +171,7 @@ public class WeatherStationActivity extends Activity {
 
         // GPIO button that generates 'A' keypresses (handled by onKeyUp method)
         try {
-            mButtonAInputDriver = new ButtonInputDriver(BoardDefaults.getButtonAGpioPin(),
+            mButtonAInputDriver = new ButtonInputDriver(BoardDefaults.getButtonGpioPin(BoardDefaults.BUTTON_A),
                     Button.LogicState.PRESSED_WHEN_LOW, KeyEvent.KEYCODE_A);
             mButtonAInputDriver.register();
             Log.d(TAG, "Initialized GPIO Button that generates a keypress with KEYCODE_A");
@@ -181,7 +181,7 @@ public class WeatherStationActivity extends Activity {
 
         // GPIO button that generates 'B' keypresses (handled by onKeyUp method)
         try {
-            mButtonBInputDriver = new ButtonInputDriver(BoardDefaults.getButtonBGpioPin(),
+            mButtonBInputDriver = new ButtonInputDriver(BoardDefaults.getButtonGpioPin(BoardDefaults.BUTTON_B),
                     Button.LogicState.PRESSED_WHEN_LOW, KeyEvent.KEYCODE_B);
             mButtonBInputDriver.register();
             Log.d(TAG, "Initialized GPIO Button that generates a keypress with KEYCODE_B");
@@ -232,7 +232,7 @@ public class WeatherStationActivity extends Activity {
         // GPIO led A
         try {
             PeripheralManagerService pioService = new PeripheralManagerService();
-            mLedA = pioService.openGpio(BoardDefaults.getLedAGpioPin());
+            mLedA = pioService.openGpio(BoardDefaults.getLedGpioPin(BoardDefaults.LED_BLUE));
             mLedA.setEdgeTriggerType(Gpio.EDGE_NONE);
             mLedA.setDirection(Gpio.DIRECTION_OUT_INITIALLY_LOW);
             mLedA.setActiveType(Gpio.ACTIVE_HIGH);
@@ -243,7 +243,7 @@ public class WeatherStationActivity extends Activity {
         // GPIO led B
         try {
             PeripheralManagerService pioService = new PeripheralManagerService();
-            mLedB = pioService.openGpio(BoardDefaults.getLedBGpioPin());
+            mLedB = pioService.openGpio(BoardDefaults.getLedGpioPin(BoardDefaults.LED_RED));
             mLedB.setEdgeTriggerType(Gpio.EDGE_NONE);
             mLedB.setDirection(Gpio.DIRECTION_OUT_INITIALLY_LOW);
             mLedB.setActiveType(Gpio.ACTIVE_HIGH);

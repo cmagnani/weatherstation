@@ -46,6 +46,14 @@ import com.google.android.things.pio.Gpio;
 import com.google.android.things.pio.PeripheralManagerService;
 
 import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.text.DecimalFormat;
+import java.util.Arrays;
+
+import rx.Observable;
+import rx.Subscriber;
+import rx.android.schedulers.AndroidSchedulers;
+import rx.schedulers.Schedulers;
 
 public class WeatherStationActivity extends Activity {
 
@@ -75,6 +83,13 @@ public class WeatherStationActivity extends Activity {
     private Date trialTime = new Date();
     private String mLastTime;
 
+    public static final String CPU_FILE_PATH = "/sys/class/thermal/thermal_zone0/temp";
+    private static final float HEATING_COEFFICIENT = 0.55f;
+    private static final long UPDATE_CPU_DELAY = 50;
+
+    private Float mCpuTemperature = 0f;
+    private Observable<Float> mCpuTemperatureObservable;
+
     private enum DisplayMode {
         TEMPERATURE,
         PRESSURE,
@@ -86,6 +101,8 @@ public class WeatherStationActivity extends Activity {
         @Override
         public void onSensorChanged(SensorEvent event) {
             mLastTemperature = event.values[0];
+            if (mCpuTemperature > mLastTemperature) mLastTemperature =
+                    (mLastTemperature - HEATING_COEFFICIENT * mCpuTemperature) / (1 - HEATING_COEFFICIENT);
             Log.d(TAG, "Temperature changed: " + mLastTemperature);
         }
 
@@ -302,7 +319,40 @@ public class WeatherStationActivity extends Activity {
             }
         }
         mHandler.post(DelayedUpdateDisplay);
+
+        // create observable for CPI temperature
+        mCpuTemperatureObservable = getCpuTemperatureObservable();
+        mCpuTemperatureObservable.subscribeOn(Schedulers.io()).observeOn(AndroidSchedulers.mainThread());
+        mHandler = new Handler();
+        mHandler.post(mTemperatureRunnable);
+
+
     }
+
+    private Runnable mTemperatureRunnable = new Runnable() {
+        @Override
+        public void run() {
+            mCpuTemperatureObservable.subscribe(new Subscriber<Float>() {
+                @Override
+                public void onCompleted() {
+                    Log.e(WeatherStationActivity.TAG, "Completed.");
+                }
+
+                @Override
+                public void onError(Throwable e) {
+                    Log.e(WeatherStationActivity.TAG, "Error: " + e.getMessage());
+                }
+
+                @Override
+                public void onNext(Float resultCpuTemperature) {
+                    // Log.i(WeatherStationActivity.TAG, "Temp: " + resultCpuTemperature); // for debugging
+                    mCpuTemperature = resultCpuTemperature;
+                }
+            });
+
+            mHandler.postDelayed(mTemperatureRunnable, UPDATE_CPU_DELAY);
+        }
+    };
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
@@ -507,4 +557,36 @@ public class WeatherStationActivity extends Activity {
             Log.e(TAG, "Error setting ledstrip", e);
         }
     }
+
+    /**
+     * Creates an observable which reads the CPU temperature from the file system.
+     *
+     * @return the observable
+     */
+    private Observable<Float> getCpuTemperatureObservable() {
+        return Observable.create(new Observable.OnSubscribe<Float>() {
+            @Override
+            public void call(Subscriber<? super Float> subscriber) {
+                RandomAccessFile reader = null;
+                try {
+                    reader = new RandomAccessFile(CPU_FILE_PATH, "r");
+                    String rawTemperature = reader.readLine();
+                    float cpuTemperature = Float.parseFloat(rawTemperature) / 1000f;
+                    // Log.i(WeatherStationActivity.TAG, "Parsed temp: " + cpuTemperature);  // for debugging
+                    subscriber.onNext(cpuTemperature);
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                    subscriber.onError(ex);
+                } finally {
+                    if (reader != null) try {
+                        reader.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        subscriber.onError(e);
+                    }
+                }
+            }
+        });
+    }
+
 }
